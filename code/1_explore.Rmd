@@ -1,0 +1,26 @@
+---
+title: "Explore data"
+author: "Daniel Kim"
+output:
+  html_document:
+    fig_caption: yes
+    number_sections: no
+    self_contained: yes
+    theme: flatly
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    echo: TRUE
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load libraries
+```{r, error=FALSE, warning=FALSE, message=FALSE}
+library(readxl)
+```
+
+
