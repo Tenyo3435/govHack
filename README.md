@@ -7,7 +7,7 @@ To quantify heterogeneity of post-school education seekers across Australian loc
 Google drive link: https://drive.google.com/drive/folders/1rOeE2AiTSgZRJJPBmUHOzxwWGI7qmakW?usp=sharing
 
 Directories:
-Please first download and unzip `GovHack directories.zip` to access all subdirectories listed below:
+Please first download and unzip `GovHack directories.zip` to access all subdirectories listed below. Ignore all other subdirectories in github.
 * code: This subdirectory contains all R code used for exploration (1_explore_preprocess.Rmd), preprocessing (2_preprocess_analysis.Rmd), analysis (2_preprocess_analysis.Rmd), modelling (3_modelling_inference.Rmd), and inference (4_category_analysis.Rmd). 
 * data: Contains preprocessed and post-processed data. Some files were not included as they were too large. However, links to them can be accessed via: https://hackerspace.govhack.org/projects/tbc_2474
 * presentation: Contains powerpoint used for video presentation.
