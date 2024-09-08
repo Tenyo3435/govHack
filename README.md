@@ -1,8 +1,10 @@
-**#Pathways to Progress: Supporting Education in Vulnerable Regions**
+**Pathways to Progress: Supporting Education in Vulnerable Regions**
 # GovHack 2024
 
 Project description:
 To quantify heterogeneity of post-school education seekers across Australian local government areas, allowing for the development of more efficient and targeted strategies that address multiple regions simultaneously.
+
+Google drive link: https://drive.google.com/drive/folders/1rOeE2AiTSgZRJJPBmUHOzxwWGI7qmakW?usp=sharing
 
 Directories:
 Please first download and unzip `GovHack directories.zip` to access all subdirectories listed below:
