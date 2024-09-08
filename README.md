@@ -12,3 +12,5 @@ Please first download and unzip `GovHack directories.zip` to access all subdirec
 * data: Contains preprocessed and post-processed data. Some files were not included as they were too large. However, links to them can be accessed via: https://hackerspace.govhack.org/projects/tbc_2474
 * presentation: Contains powerpoint used for video presentation.
 * results: Contains exploratory and plots used for video presentation. Exploratory plots are under subdirectory 'histograms'. Note: Most exploratory plots were not saved but can be remade using files in the subdirectory 'code'.
+
+Note: I could not find a bug which was introduced in later in the pipeline (when I was clustering/subsetting the date) which reversed the trend, thus I took the inverse of the SPI to get the original trend. I will need to find the bug after the competition, which I believe is in the second .Rmd file `2_preprocess_analysis.Rmd`
