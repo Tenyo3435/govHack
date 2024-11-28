@@ -1,0 +1,383 @@
+---
+title: "Category analysis"
+author: "Daniel Kim"
+output:
+  html_document:
+    fig_caption: yes
+    number_sections: no
+    self_contained: yes
+    theme: flatly
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    echo: TRUE
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(caret)
+data <- readRDS("~/Desktop/govHack/data/final_data2.rds")
+data$state <- factor(data$state_codes.STATE_NAME_2021, levels = c("Australian Capital Territory",
+                                                                         "New South Wales",
+                                                                         "Northern Territory",
+                                                                         "Queensland",
+                                                                         "South Australia",
+                                                                         "Tasmania",
+                                                                         "Victoria",
+                                                                         "Western Australia",
+                                                                         "Other Territories",
+                                                                         "Outside Australia"))
+
+data$spi_category <- data$cluster
+data$spi_category <- ifelse(data$cluster == "4", "High",
+                         ifelse(data$cluster %in% c("1", "2"), "Medium",
+                         ifelse(data$cluster == "3", "Low", data$spi_category)))
+data$spi_category <- factor(data$spi_category, levels = c("High", "Medium", "Low"))
+
+test_data <- readRDS("~/Desktop/govHack/data/test_data.rds")
+test_data$spi_category <- test_data$cluster
+test_data$spi_category <- ifelse(test_data$cluster == "4", "High",
+                         ifelse(test_data$cluster %in% c("1", "2"), "Medium",
+                         ifelse(test_data$cluster == "3", "Low", data$spi_category)))
+test_data$spi_category <- factor(test_data$spi_category, levels = c("High", "Medium", "Low"))
+```
+
+```{r}
+state_colours <- c("#003da5", 
+                   "#9bcbeb", 
+                   "#c25f04", 
+                   "#72182c", 
+                   "#d50132", 
+                   "#016747", 
+                   "#003c71", 
+                   "#ffd100",
+                   "#f7c7cc",
+                   "#a2abb7")
+
+category_colours <- c("#2d64dc", "#ec9b26", "#ec5326")
+```
+
+# Low SPI
+```{r}
+idx <- c(1:5,58:96,259:265, 274:278)
+low_spi <- data[data$spi_category=="Low",]
+spi <- low_spi$spi
+low_spi <- low_spi[,-idx]
+low_spi <- low_spi[,!(colnames(low_spi) %in% c("spi_category", "spi"))]
+model <- randomForest(x=low_spi, y=spi)
+
+importance <- model$importance
+df <- data.frame(variable=rownames(importance),
+                 score=unname(importance))
+df <- df[order(df$score, decreasing=TRUE),]
+df$variable[1:10]
+
+for(i in 1:length(df$variable[1:10])){
+  x <- low_spi[,df$variable[i]]
+  y <- labels
+  plot(x,y, xlab=df$variable[i], ylab="spi")
+}
+
+# Variables of interest
+# Persons.born.overseas..Arrived.over.10.years.ago......Data.year..2021.
+# Internet.accessed.from.private.dwelling......Data.year..2016.
+# Registered.marital.status..Married......Data.year..2021.
+# Aboriginal.and.Torres.Strait.Islander.Peoples..Persons.living.in.a.dwelling.requiring.four.or.more.additional.bedrooms......Data.year..2021.
+# Aboriginal.and.Torres.Strait.Islander.Peoples..Persons.living.in.appropriately.sized.dwellings..Closing.the.Gap.measure.......Data.year..2021.
+# Registered.marital.status..Never.married......Data.year..2021.
+df <- data.frame(x=low_spi$Aboriginal.and.Torres.Strait.Islander.Peoples..Persons.living.in.a.dwelling.requiring.four.or.more.additional.bedrooms......Data.year..2021,
+                 spi=spi)
+ggplot(df, aes(x=x, y=spi)) + 
+  theme(panel.background = element_blank(),
+        legend.position = "none",
+        axis.line = element_line(color="black"),
+        legend.text = element_text(size = 10),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10)) + 
+  labs(x="\n% Overcrowded Housing (ATSI)", y="SPI\n") + 
+  geom_point() + 
+  geom_smooth(method="lm")
+cor(df$x, df$spi)
+ggsave("~/Desktop/govHack/results/ATSI_inadequate_housing.png", width=7, height=3)
+
+df <- data.frame(x=low_spi$Persons.born.overseas..Arrived.over.10.years.ago......Data.year..2021,
+                 spi=spi)
+ggplot(df, aes(x=x, y=spi)) + 
+  theme(panel.background = element_blank(),
+        legend.position = "none",
+        axis.line = element_line(color="black"),
+        legend.text = element_text(size = 10),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10)) + 
+  labs(x="\n% Born Overseas (Arrival > 10 years ago)", y="SPI\n") + 
+  geom_point() + 
+  geom_smooth(method="lm")
+cor(df$x, df$spi)
+ggsave("~/Desktop/govHack/results/low_born_overseas_housing.png", width=7, height=3)
+
+df <- data.frame(x=low_spi$Registered.marital.status..Married......Data.year..2021,
+                 spi=spi)
+ggplot(df, aes(x=x, y=spi)) + 
+  theme(panel.background = element_blank(),
+        legend.position = "none",
+        axis.line = element_line(color="black"),
+        legend.text = element_text(size = 10),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10)) + 
+  labs(x="\n% Married", y="SPI\n") + 
+  geom_point() + 
+  geom_smooth(method="lm")
+cor(df$x, df$spi)
+ggsave("~/Desktop/govHack/results/low_Married.png", width=7, height=3)
+
+#Aboriginal.and.Torres.Strait.Islander.Peoples..Persons.living.in.appropriately.sized.dwellings..Closing.the.Gap.measure.......Data.year..2021
+df <- data.frame(x=low_spi$Aboriginal.and.Torres.Strait.Islander.Peoples..Persons.living.in.appropriately.sized.dwellings..Closing.the.Gap.measure.......Data.year..2021,
+                 spi=spi)
+ggplot(df, aes(x=x, y=spi)) + 
+  theme(panel.background = element_blank(),
+        legend.position = "none",
+        axis.line = element_line(color="black"),
+        legend.text = element_text(size = 10),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10)) + 
+  labs(x="\n% Appropriately Sized Housing (ATSI)", y="SPI\n") + 
+  geom_point() + 
+  geom_smooth(method="lm")
+cor(df$x, df$spi)
+ggsave("~/Desktop/govHack/results/appropriate_dwellings.png", width=7, height=3)
+```
+
+# High SPI
+```{r}
+idx <- c(1:5,58:96,259:265, 274:278)
+high_spi <- data[data$spi_category=="High",]
+labels <- high_spi$spi
+spi <- high_spi$spi
+high_spi <- high_spi[,-idx]
+high_spi <- high_spi[,!(colnames(high_spi) %in% c("spi_category", "spi"))]
+model <- randomForest(x=high_spi, y=spi)
+
+importance <- model$importance
+df <- data.frame(variable=rownames(importance),
+                 score=unname(importance))
+df <- df[order(df$score, decreasing=TRUE),]
+df$variable[1:10]
+
+for(i in 1:length(df$variable[1:10])){
+  x <- high_spi[,df$variable[i]]
+  y <- labels
+  plot(x,y, xlab=df$variable[i], ylab="spi")
+}
+# Persons.born.overseas..Highest.educational.attainment..School.education.level......Data.year..2021.
+# Occupation.of.employed.persons..Machinery.operators.and.drivers......Data.year..2021.
+# Persons.undertaking.voluntary.work.for.an.organisation.or.group......Data.year..2021.
+# Persons.born.overseas..Religious.affiliation..Secular.beliefs..other.spiritual.beliefs..no.religion......Data.year..2021.
+# Persons.born.overseas..Highest.educational.attainment..Bachelor.degree.level......Data.year..2021.
+
+df <- data.frame(x=high_spi$Aboriginal.and.Torres.Strait.Islander.Peoples..Persons.living.in.a.dwelling.requiring.four.or.more.additional.bedrooms......Data.year..2021,
+                 spi=spi)
+ggplot(df, aes(x=x, y=spi)) + 
+  theme(panel.background = element_blank(),
+        legend.position = "none",
+        axis.line = element_line(color="black"),
+        legend.text = element_text(size = 10),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10)) + 
+  labs(x="\n% Overcrowded Housing (ATSI)", y="SPI\n") + 
+  geom_point() + 
+  geom_smooth(method="lm")
+cor(df$x, df$spi)
+ggsave("~/Desktop/govHack/results/ATSI_HIGH_inadequate_housing.png", width=7, height=3)
+
+df <- data.frame(x=high_spi$Persons.born.overseas..Arrived.over.10.years.ago......Data.year..2021,
+                 spi=spi)
+ggplot(df, aes(x=x, y=spi)) + 
+  theme(panel.background = element_blank(),
+        legend.position = "none",
+        axis.line = element_line(color="black"),
+        legend.text = element_text(size = 10),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10)) + 
+  labs(x="\n% Born Overseas (Arrival > 10 years ago)", y="SPI\n") + 
+  geom_point() + 
+  geom_smooth(method="lm")
+cor(df$x, df$spi)
+ggsave("~/Desktop/govHack/results/high_born_overseas.png", width=7, height=3)
+
+df <- data.frame(x=high_spi$Registered.marital.status..Married......Data.year..2021,
+                 spi=spi)
+ggplot(df, aes(x=x, y=spi)) + 
+  theme(panel.background = element_blank(),
+        legend.position = "none",
+        axis.line = element_line(color="black"),
+        legend.text = element_text(size = 10),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10)) + 
+  labs(x="\n% Married", y="SPI\n") + 
+  geom_point() + 
+  geom_smooth(method="lm")
+cor(df$x, df$spi)
+ggsave("~/Desktop/govHack/results/high_Married.png", width=7, height=3)
+
+```
+
+```{r}
+idx <- c(1:5,58:96,259:265, 274:278)
+train_data <- data[,-idx]
+high <- sample(which(train_data$spi_category=="High"),90)
+medium <- sample(which(train_data$spi_category=="Medium"),383)
+train_data <- train_data[-c(high,medium),]
+test_data <- test_data[,-idx]
+test_data <- test_data[,!(colnames(test_data) == "state")]
+train_data <- train_data[,!(colnames(train_data) == "state")]
+colnames(train_data)[!(colnames(train_data) %in% colnames(test_data))]
+
+train_y <- train_data$spi_category
+train_data <- train_data[,!(colnames(train_data) %in% c("spi", "spi_category", "state"))]
+test_y <- test_data$spi_category
+test_data <- test_data[,!(colnames(test_data) %in% c("spi", "spi_category", "state"))]
+
+train_model <- randomForest(x=train_data, y=train_y, ntree=1000)
+predictions <- predict(train_model, test_data)
+accuracy <- mean(predictions==test_y)
+print(accuracy)
+confusion_matrix <- table(predictions, test_y)
+conf_matrix <- confusionMatrix(factor(predictions), factor(test_y))
+print(confusion_matrix)
+
+
+
+conf_matrix <- confusionMatrix(predictions, test_y)
+
+# Convert confusion matrix table to a data fram
+
+cm <- as.data.frame(conf_matrix$table)
+
+# Add column for correctly assigned proportions
+conf_matrix <- confusionMatrix(predictions, test_y)
+
+# Convert confusion matrix to a data frame
+cm <- as.data.frame(conf_matrix$table)
+
+# Plot the frequency confusion matrix
+ggplot(data = cm, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), vjust = 1) +  # Display raw frequencies
+  scale_fill_gradient(low = "white", high = "#58d9ed") +
+  theme(panel.grid.major = element_line(color = "black", linewidth = 0.1),
+        panel.grid.minor = element_line(color = "black", linewidth = 0.1), 
+        panel.grid.major.x = element_blank(), 
+        panel.grid.major.y = element_blank()) + 
+  labs(title = " ", x = "\nPredicted", y = "Actual\n")
+ggsave("~/Desktop/govHack/results/heatmap.png",width=5, height=4)
+```
+
+Load spatial data
+```{r}
+library(sf)
+library(leaflet)
+
+# Load GeoJSON file
+geo_data <- st_read("/Users/dkim/Desktop/govHack/data/ABS_Family_and_community_by_2021_LGA_Nov_2023_4290548092582972963.geojson")
+
+area_codes <- intersect(geo_data$lga_code_2021, data$Local.Government.Areas.2021.code)
+geo_data <- geo_data[geo_data$lga_code_2021 %in% area_codes,]
+data <- data[geo_data$lga_code_2021 %in% area_codes,]
+data <- data[match(geo_data$lga_code_2021, data$Local.Government.Areas.2021.code),]
+geo_data$spi_category <- data$spi_category
+
+geo_data$spi_category <- as.factor(data$spi_category)
+geo_data$state <- as.factor(data$state)
+
+# Plot using leaflet
+leaflet(data = geo_data) %>%
+  addTiles() %>%
+  addPolygons(color = "#444444", weight = 1, smoothFactor = 0.5)
+
+category_colours <- c("#1bd17b", "#2d64dc", "#ec5326")
+
+ggplot(data = geo_data) +
+  scale_fill_manual(values = category_colours) + 
+  geom_sf(aes(fill = spi_category)) +  # Use the newly added factor variable for fill
+  theme(panel.background=element_blank(),
+        axis.line = element_line(color="black"),
+        legend.text = element_text(size = 15),
+        axis.text.x = element_text(size = 15),
+        axis.text.y = element_text(size = 15)) +
+  labs(fill="SPI Category") 
+ggsave("~/Desktop/govHack/results/category_map.pdf", width=15, height=13)
+```
+```{r}
+category_colours <- c("grey", "grey", "#ec5326")
+
+ggplot(data = geo_data) +
+  scale_fill_manual(values = category_colours) + 
+  geom_sf(aes(fill = spi_category)) +  # Use the newly added factor variable for fill
+  theme(panel.background=element_blank(),
+        axis.line = element_line(color="black"),
+        legend.text = element_text(size = 15),
+        axis.text.x = element_text(size = 15),
+        axis.text.y = element_text(size = 15)) +
+  labs(fill="SPI Category") 
+ggsave("~/Desktop/govHack/results/low_category_map.png", width=15, height=13)
+```
+```{r}
+category_colours <- c("#24fa96", "grey", "grey")
+
+ggplot(data = geo_data) +
+  scale_fill_manual(values = category_colours) + 
+  geom_sf(aes(fill = spi_category)) +  # Use the newly added factor variable for fill
+  theme(panel.background=element_blank(),
+        axis.line = element_line(color="black"),
+        legend.text = element_text(size = 15),
+        axis.text.x = element_text(size = 15),
+        axis.text.y = element_text(size = 15)) +
+  labs(fill="SPI Category") 
+ggsave("~/Desktop/govHack/results/high_category_map.png", width=15, height=13)
+```
+```{r}
+ggplot(data = geo_data) +
+  geom_sf(fill = "white", color = "black", size = 0.5) +
+  theme(panel.background=element_blank(),
+        axis.line = element_line(color="black"),
+        legend.text = element_text(size = 15),
+        axis.text.x = element_text(size = 15),
+        axis.text.y = element_text(size = 15)) +
+  labs(fill="SPI Category") 
+ggsave("~/Desktop/govHack/results/state_white_map.png", width=15, height=13)
+```
+```{r}
+category_colours <- c("#1bd17b", "grey", "#ec5326")
+
+ggplot(data = geo_data) +
+  scale_fill_manual(values = category_colours) + 
+  geom_sf(aes(fill = spi_category)) +  # Use the newly added factor variable for fill
+  theme(panel.background=element_blank(),
+        axis.line = element_line(color="black"),
+        legend.text = element_text(size = 15),
+        axis.text.x = element_text(size = 15),
+        axis.text.y = element_text(size = 15)) +
+  labs(fill="SPI Category") 
+ggsave("~/Desktop/govHack/results/high_low_category_map.png", width=15, height=13)
+```
+```{r}
+library(viridis)
+category_colours <- c("#1bd17b", "grey", "#ec5326")
+geo_data$spi <- data$spi
+ggplot(data = geo_data) +
+  geom_sf(aes(fill = spi)) +  
+  scale_fill_viridis_c(option = "D") +  
+  theme(panel.background = element_blank(),
+        axis.line = element_line(color = "black"),
+        legend.text = element_text(size = 15),
+        axis.text.x = element_text(size = 15),
+        axis.text.y = element_text(size = 15)) +
+  labs(fill = "SPI")  
+ggsave("~/Desktop/govHack/results/SPI_aus_map.png", width=15, height=13)
+```
+
+

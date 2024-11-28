@@ -1,0 +1,458 @@
+---
+title: "Analysis"
+author: "Daniel Kim"
+output:
+  html_document:
+    fig_caption: yes
+    number_sections: no
+    self_contained: yes
+    theme: flatly
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    echo: TRUE
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(glmnet)
+library(randomForest)
+tmp_data <- readRDS("~/Desktop/govHack/data/final_data.rds")
+idx <- sample(1:nrow(tmp_data), 0.8*nrow(tmp_data), replace=FALSE)
+data <- tmp_data[idx,]
+test_data <- tmp_data[-idx,]
+saveRDS(test_data, "~/Desktop/govHack/data/test_data.rds")
+table(data$cluster)
+table(training_data$cluster)
+```
+
+what's driving PC1?
+```{r}
+numeric_data <- data[,5:(ncol(data)-5)]
+pca_result <- prcomp(numeric_data, center = TRUE, scale. = TRUE)
+var <- pca_result$sdev^2 / sum(pca_result$sdev^2)
+barplot(var[1:20], main = "Scree Plot")
+# Use first 5 PCs
+pca <- data.frame(pca_result$x)
+ggplot(pca, aes(x=PC1, y=PC2)) + geom_point()
+
+tmp <- pca_result$rotation
+head(sort(tmp[,1], decreasing=TRUE))
+```
+
+```{r}
+plot(spi~cluster, data=data)
+df <- data.frame(cluster=data$cluster,
+                 spi=data$spi,
+                 lga=data$Local.Government.Areas.2021.name,
+                 state=data$state_codes.STATE_NAME_2021,
+                 PC1=data$PC1,
+                 PC2=data$PC2,
+                 UMAP1=data$UMAP1,
+                 UMAP2=data$UMAP2)
+df$cluster <- factor(df$cluster, levels=c("4", "1", "2", "3"))
+
+tmp_data$spi_category <- tmp_data$cluster
+tmp_data$spi_category <- ifelse(tmp_data$cluster == "4", "High",
+                         ifelse(tmp_data$cluster %in% c("1", "2"), "Medium",
+                         ifelse(tmp_data$cluster == "3", "Low", tmp_data$spi_category)))
+tmp_data$spi_category <- factor(tmp_data$spi_category, levels = c("High", "Medium", "Low"))
+
+df$state <- as.factor(df$state)
+ggplot(df, aes(x=cluster, y=spi)) + geom_boxplot()
+
+cluster_colours <- c("#c882ff", "#f8756d", "#7cae01", "#00bfc4")
+ggplot(df, aes(x=cluster, y=spi, fill=cluster)) + 
+  scale_fill_manual(values=cluster_colours) + 
+  theme(panel.background = element_blank(),
+        axis.line = element_line(color="black"),
+        legend.position = "none",
+        legend.text = element_text(size = 10),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10)) + 
+  labs(x="\nCluster", y="SPI\n", color = "Cluster") + 
+    geom_boxplot()
+ggsave("~/Desktop/govHack/results/SPI_boxplot.png", width=4, height=5)
+
+category_colours <- c("#1bd17b", "#2d64dc", "#ec5326")
+ggplot(tmp_data, aes(x=spi_category, y=spi, fill=spi_category)) + 
+  theme(panel.background = element_blank(),
+        axis.line = element_line(color="black"),
+        legend.position = "none",
+        legend.text = element_text(size = 10),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10)) + 
+  scale_fill_manual(values=category_colours) +
+  labs(x="\nSPI category", y="SPI\n") + 
+  geom_boxplot()
+ggsave("~/Desktop/govHack/results/SPI_category_boxplot.png", width=4, height=5)
+```
+
+```{r}
+ggplot(df, aes(x=PC1, y=PC2, color=state)) + geom_point()
+
+ggplot(df, aes(x=UMAP1, y=UMAP2, color=cluster)) + geom_point()
+ggplot(df, aes(x=UMAP1, y=UMAP2, color=state)) + geom_point()
+```
+```{r}
+new_data <- data[,-c(1,2,3,4,275:ncol(data))]
+new_data$spi_category <- new_data$cluster
+new_data$spi_category <- ifelse(new_data$cluster == "4", "High",
+                         ifelse(new_data$cluster %in% c("1", "2"), "Medium",
+                         ifelse(new_data$cluster == "3", "Low", new_data$spi_category)))
+new_data$spi_category <- factor(new_data$spi_category, levels = c("High", "Medium", "Low"))
+cluster_1 <- new_data[new_data$spi_category== "High", !(colnames(new_data) %in% "cluster")]
+cluster_1$spi_category
+y <- cluster_1$spi
+
+df <- cluster_1[,!(colnames(cluster_1) %in% "spi")]
+model <- randomForest(x=df, y=y, ntree=1000)
+importance_df <- data.frame(variable=rownames(model$importance),
+                            score=unname(model$importance))
+importance_df <- importance_df[order(importance_df$score, decreasing=TRUE),]
+importance_df$variable <- factor(importance_df$variable, levels=unique(importance_df$variable))
+ggplot(importance_df[1:10,], aes(x=variable, y=score)) + geom_bar(stat="identity") +
+  theme(panel.background=element_blank(),
+        axis.line=element_line(color="black"),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+importance_df$variable[1:10]
+```
+
+```{r}
+cluster_2 <- new_data[new_data$spi_category=="Medium", !(colnames(new_data) %in% "cluster")]
+y=cluster_2$spi
+df <- cluster_2[,!(colnames(cluster_2) %in% "spi")]
+model <- randomForest(x=df, y=y, ntree=1000)
+importance_df <- data.frame(variable=rownames(model$importance),
+                            score=unname(model$importance))
+importance_df <- importance_df[order(importance_df$score, decreasing=TRUE),]
+importance_df$variable <- factor(importance_df$variable, levels=unique(importance_df$variable))
+ggplot(importance_df[1:10,], aes(x=variable, y=score)) + geom_bar(stat="identity") +
+  theme(panel.background=element_blank(),
+        axis.line=element_line(color="black"),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+importance_df$variable[1:10]
+```
+
+```{r}
+cluster_3 <- new_data[new_data$cluster=="3", !(colnames(new_data) %in% "cluster")]
+y=cluster_3$spi
+df <- cluster_3[,!(colnames(cluster_3) %in% "spi")]
+model <- randomForest(x=df, y=y, ntree=100)
+importance_df <- data.frame(variable=rownames(model$importance),
+                            score=unname(model$importance))
+importance_df <- importance_df[order(importance_df$score, decreasing=TRUE),]
+importance_df$variable <- factor(importance_df$variable, levels=unique(importance_df$variable))
+ggplot(importance_df[1:10,], aes(x=variable, y=score)) + geom_bar(stat="identity") +
+  theme(panel.background=element_blank(),
+        axis.line=element_line(color="black"),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+importance_df$variable[1:10]
+```
+
+```{r}
+cluster_3 <- new_data[new_data$cluster=="Low", !(colnames(new_data) %in% "cluster")]
+y=cluster_4$spi
+df <- cluster_4[,!(colnames(cluster_4) %in% "spi")]
+model <- randomForest(x=df, y=y, ntree=100)
+importance_df <- data.frame(variable=rownames(model$importance),
+                            score=unname(model$importance))
+importance_df <- importance_df[order(importance_df$score, decreasing=TRUE),]
+importance_df$variable <- factor(importance_df$variable, levels=unique(importance_df$variable))
+ggplot(importance_df[1:10,], aes(x=variable, y=score)) + geom_bar(stat="identity") +
+  theme(panel.background=element_blank(),
+        axis.line=element_line(color="black"),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+importance_df$variable[1:10]
+```
+With indexes
+```{r}
+y=new_data$spi
+df <- new_data[, !(colnames(new_data) %in% "spi")]
+model <- randomForest(x=df, y=y, ntree=100)
+importance_df <- data.frame(variable=rownames(model$importance),
+                            score=unname(model$importance))
+importance_df <- importance_df[order(importance_df$score, decreasing=TRUE),]
+importance_df$variable <- factor(importance_df$variable, levels=unique(importance_df$variable))
+ggplot(importance_df[1:10,], aes(x=variable, y=score)) + geom_bar(stat="identity") +
+  theme(panel.background=element_blank(),
+        axis.line=element_line(color="black"),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+importance_df$variable[1:50]
+```
+
+Without indexes (Random forest)
+```{r}
+y=new_data$spi
+df <- new_data[,-c(54:92)]
+df <- df[, !(colnames(df) %in% c("spi", "cluster"))]
+model <- randomForest(x=df, y=y, ntree=100)
+importance_df <- data.frame(variable=rownames(model$importance),
+                            score=unname(model$importance))
+importance_df <- importance_df[order(importance_df$score, decreasing=TRUE),]
+importance_df$variable <- factor(importance_df$variable, levels=unique(importance_df$variable))
+ggplot(importance_df[1:10,], aes(x=variable, y=score)) + geom_bar(stat="identity") +
+  theme(panel.background=element_blank(),
+        axis.line=element_line(color="black"),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+importance_df$variable[1:20]
+```
+
+############ Variables of interest #########
+# Median.weekly.household.rental.payment......Data.year..2021.
+```{r}
+#Median.weekly.household.rental.payment......Data.year..2021.
+boxplot(Median.weekly.household.rental.payment......Data.year..2021.~spi_category, data=new_data)
+plot(new_data$Median.weekly.household.rental.payment......Data.year..2021., new_data$spi)
+df <- data.frame(y=new_data$Median.weekly.household.rental.payment......Data.year..2021.,
+                 x=new_data$spi_category,
+                 spi=new_data$spi)
+df$x <- as.factor(df$x)
+category_colours <- c("#1bd17b", "#2d64dc", "#ec5326")
+ggplot(df, aes(x=y, y=spi)) + 
+  theme(panel.background = element_blank(),
+        axis.line = element_line(color="black"),
+        legend.position = "none",
+        legend.text = element_text(size = 10),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10)) + 
+  scale_fill_manual(values=category_colours) +
+  labs(x="\nSPI category", y="SPI\n") + 
+  geom_point()
+ggsave("~/Desktop/govHack/results/SPI_category_boxplot.png", width=4, height=5)
+
+df <- data.frame(y=new_data$Median.weekly.household.rental.payment......Data.year..2021.,
+                 x=new_data$spi_category,
+                 spi=new_data$spi)
+df$x <- as.factor(df$x)
+category_colours <- c("#1bd17b", "#2d64dc", "#ec5326")
+
+ggplot(df, aes(x=y, y=spi, color=x)) + 
+  theme(panel.background = element_blank(),
+        axis.line = element_line(color="black"),
+        legend.text = element_text(size = 10),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10)) + 
+  scale_fill_manual(values=category_colours) +
+  labs(x="\nMedian Rent (Weekly)", y="SPI\n", color="SPI category") + 
+  geom_point()
+ggsave("~/Desktop/govHack/results/scatter_rent.png", width=7, height=5)
+```
+
+# Occupation.of.employed.persons..Labourers......Data.year..2021
+```{r}
+#Median.weekly.household.rental.payment......Data.year..2021.
+boxplot(Occupation.of.employed.persons..Labourers......Data.year..2021.~cluster, data=new_data)
+plot(new_data$Occupation.of.employed.persons..Labourers......Data.year..2021, new_data$spi)
+
+df <- data.frame(y=new_data$Occupation.of.employed.persons..Labourers......Data.year..2021.,
+                 x=new_data$spi_category,
+                 spi=new_data$spi)
+df$x <- as.factor(df$x)
+category_colours <- c("#2d64dc", "#ec9b26", "#ec5326")
+
+ggplot(df, aes(x=y, y=spi, color=x)) + 
+  theme(panel.background = element_blank(),
+        axis.line = element_line(color="black"),
+        legend.text = element_text(size = 10),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10)) + 
+  scale_fill_manual(values=category_colours) +
+  labs(x="\nMedian Rent (Weekly)", y="SPI\n", color="SPI category") + 
+  geom_point()
+ggsave("~/Desktop/govHack/results/scatter_rent.png", width=7, height=5)
+```
+
+# Internet.accessed.from.private.dwelling......Data.year..2016.
+```{r}
+#Internet.accessed.from.private.dwelling......Data.year..2016.
+boxplot(Internet.accessed.from.private.dwelling......Data.year..2016.~cluster, data=new_data)
+plot(new_data$Internet.accessed.from.private.dwelling......Data.year..2016., new_data$spi)
+
+df <- data.frame(y=new_data$Internet.accessed.from.private.dwelling......Data.year..2016.,
+                 x=new_data$spi_category,
+                 spi=new_data$spi)
+df$x <- as.factor(df$x)
+
+category_colours <- c("#1bd17b", "#2d64dc", "#ec5326")
+
+ggplot(df, aes(x=y, y=spi, color=x)) + 
+  theme(panel.background = element_blank(),
+        axis.line = element_line(color="black"),
+        legend.text = element_text(size = 10),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10)) + 
+  scale_color_manual(values=category_colours) +
+  labs(x="\nInternet Access", y="SPI\n", color="SPI category") + 
+  geom_point()
+ggsave("~/Desktop/govHack/results/scatter_internet_access.png", width=7, height=5)
+
+cor(df$y,df$spi)
+```
+
+# Median.monthly.household.mortgage.payment......Data.year..2021.
+```{r}
+#Median.monthly.household.mortgage.payment......Data.year..2021.
+boxplot(Median.monthly.household.mortgage.payment......Data.year..2021.~cluster, data=new_data)
+plot(new_data$Median.monthly.household.mortgage.payment......Data.year..2021., new_data$spi)
+
+df <- data.frame(y=new_data$Median.monthly.household.mortgage.payment......Data.year..2021.,
+                 x=new_data$spi_category,
+                 spi=new_data$spi)
+df$x <- as.factor(df$x)
+
+ggplot(df, aes(x=y, y=spi, color=x)) + 
+  theme(panel.background = element_blank(),
+        legend.position = "none",
+        axis.line = element_line(color="black"),
+        legend.text = element_text(size = 10),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10)) + 
+  scale_fill_manual(values=category_colours) +
+  labs(x="\nMedian morgage payment (Monthly)", y="SPI\n", color="SPI category") + 
+  geom_point() + facet_wrap(~x)
+ggsave("~/Desktop/govHack/results/scatter_mortgage_subset.png", width=7, height=5)
+
+```
+
+# Persons.undertaking.voluntary.work.for.an.organisation.or.group......Data.year..2021.
+```{r}
+#Persons.undertaking.voluntary.work.for.an.organisation.or.group......Data.year..2021.
+boxplot(Persons.undertaking.voluntary.work.for.an.organisation.or.group......Data.year..2021.~cluster, data=new_data)
+plot(new_data$Persons.undertaking.voluntary.work.for.an.organisation.or.group......Data.year..2021., new_data$spi)
+
+```
+
+# Persons.born.overseas..Labour.force.status..Employed..no....Data.year..2021.
+```{r}
+#Persons.undertaking.voluntary.work.for.an.organisation.or.group......Data.year..2021.
+boxplot(Persons.born.overseas..Labour.force.status..Employed..no....Data.year..2021.~cluster, data=new_data)
+plot(new_data$Persons.born.overseas..Labour.force.status..Employed..no....Data.year..2021., new_data$spi)
+
+```
+
+# Registered.marital.status..Divorced......Data.year..2021.
+```{r}
+#Persons.undertaking.voluntary.work.for.an.organisation.or.group......Data.year..2021.
+boxplot(Registered.marital.status..Divorced......Data.year..2021.~cluster, data=new_data)
+plot(new_data$Registered.marital.status..Divorced......Data.year..2021., new_data$spi)
+
+df <- data.frame(y=new_data$Registered.marital.status..Divorced......Data.year..2021.,
+                 x=new_data$spi_category,
+                 spi=new_data$spi)
+df$x <- as.factor(df$x)
+
+ggplot(df, aes(x=y, y=spi, color=x)) + 
+  theme(panel.background = element_blank(),
+        legend.position = "none",
+        axis.line = element_line(color="black"),
+        legend.text = element_text(size = 10),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10)) + 
+  scale_fill_manual(values=category_colours) +
+  labs(x="\nMedian morgage payment (Monthly)", y="SPI\n", color="SPI category") + 
+  geom_point() + facet_wrap(~x)
+ggsave("~/Desktop/govHack/results/scatter_mortgage_subset.png", width=7, height=5)
+
+```
+
+# Persons.born.overseas..Highest.educational.attainment..Postgraduate.degree.level......Data.year..2021.
+```{r}
+#Persons.undertaking.voluntary.work.for.an.organisation.or.group......Data.year..2021.
+boxplot(Persons.born.overseas..Highest.educational.attainment..Postgraduate.degree.level......Data.year..2021.~cluster, data=new_data)
+plot(new_data$Persons.born.overseas..Highest.educational.attainment..Postgraduate.degree.level......Data.year..2021., new_data$spi)
+
+df <- data.frame(y=new_data$Persons.born.overseas..Highest.educational.attainment..Postgraduate.degree.level......Data.year..2021.,
+                 x=new_data$spi_category,
+                 spi=new_data$spi)
+df$x <- as.factor(df$x)
+
+ggplot(df, aes(x=y, y=spi, color=x)) + 
+  theme(panel.background = element_blank(),
+        legend.position = "none",
+        axis.line = element_line(color="black"),
+        legend.text = element_text(size = 10),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10)) + 
+  scale_fill_manual(values=category_colours) +
+  labs(x="\nMedian morgage payment (Monthly)", y="SPI\n", color="SPI category") + 
+  geom_point() + facet_wrap(~x)
+ggsave("~/Desktop/govHack/results/scatter_mortgage_subset.png", width=7, height=5)
+```
+
+# Overseas.born.population.aged.15.years.and.over..no....Data.year..2021.
+```{r}
+#Persons.undertaking.voluntary.work.for.an.organisation.or.group......Data.year..2021.
+boxplot(Overseas.born.population.aged.15.years.and.over..no....Data.year..2021.~cluster, data=new_data)
+plot(new_data$Overseas.born.population.aged.15.years.and.over..no....Data.year..2021., new_data$spi)
+
+```
+
+# People.who.worked.from.home..no....Data.year..2021.
+```{r}
+#Persons.undertaking.voluntary.work.for.an.organisation.or.group......Data.year..2021.
+boxplot(People.who.worked.from.home..no....Data.year..2021.~cluster, data=new_data)
+plot(new_data$People.who.worked.from.home..no....Data.year..2021., new_data$spi)
+
+df <- data.frame(y=new_data$People.who.worked.from.home..no....Data.year..2021.,
+                 x=new_data$spi_category,
+                 spi=new_data$spi)
+df$x <- as.factor(df$x)
+
+ggplot(df, aes(x=y, y=spi, color=x)) + 
+  theme(panel.background = element_blank(),
+        legend.position = "none",
+        axis.line = element_line(color="black"),
+        legend.text = element_text(size = 10),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10)) + 
+  scale_fill_manual(values=category_colours) +
+  labs(x="\nMedian morgage payment (Monthly)", y="SPI\n", color="SPI category") + 
+  geom_point() + facet_wrap(~x)
+```
+# Persons.born.overseas..Highest.educational.attainment..Bachelor.degree.level......Data.year..2021.
+```{r}
+#Persons.born.overseas..Highest.educational.attainment..Bachelor.degree.level......Data.year..2021.
+boxplot(Persons.born.overseas..Highest.educational.attainment..Bachelor.degree.level......Data.year..2021.~cluster, data=new_data)
+plot(new_data$Persons.born.overseas..Highest.educational.attainment..Bachelor.degree.level......Data.year..2021., new_data$spi)
+
+```
+# SEIFA.Index.of.relative.socio.economic.disadvantage..IRSD...Rank.within.State.or.Territory..decile...Data.year..2021.
+```{r}
+#SEIFA.Index.of.relative.socio.economic.disadvantage..IRSD...Rank.within.State.or.Territory..decile...Data.year..2021.
+
+#Persons.born.overseas..Highest.educational.attainment..Bachelor.degree.level......Data.year..2021.
+boxplot(SEIFA.Index.of.relative.socio.economic.disadvantage..IRSD...Rank.within.State.or.Territory..decile...Data.year..2021.~cluster, data=new_data)
+plot(new_data$SEIFA.Index.of.relative.socio.economic.disadvantage..IRSD...Rank.within.State.or.Territory..decile...Data.year..2021., new_data$spi)
+```
+
+
+```{r}
+cluster_1_lgas <- data$Local.Government.Areas.2021.name[data$cluster=="1"]
+
+cluster_2_lgas <- data$Local.Government.Areas.2021.name[data$cluster=="2"]
+
+cluster_3_lgas <- data$Local.Government.Areas.2021.name[data$cluster=="3"]
+
+cluster_4_lgas <- data$Local.Government.Areas.2021.name[data$cluster=="4"]
+print(cluster_4_lgas)
+```
+
+
+```{r}
+saveRDS(tmp_data, "~/Desktop/govHack/data/final_data2.rds")
+
+```
+
+
+
+
+
+
+
+
+

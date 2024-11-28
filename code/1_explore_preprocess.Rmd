@@ -1,0 +1,152 @@
+---
+title: "Explore & preprocess"
+author: "Daniel Kim"
+output:
+  html_document:
+    fig_caption: yes
+    number_sections: no
+    self_contained: yes
+    theme: flatly
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    echo: TRUE
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load libraries
+```{r, error=FALSE, warning=FALSE, message=FALSE}
+library(readxl)
+library(sf)
+library(naniar)
+```
+
+Load in data (Geo spatial data)
+```{r, error=FALSE, warning=FALSE, message=FALSE, eval=FALSE}
+gdb_path <- "/Users/dkim/Downloads/ABS_Family_and_community_by_2021_LGA_Nov_2023_2062155614671671349.geodatabase"
+st_layers(gdb_path)
+lga_location <- st_read(gdb_path, layer = "ABS_fam_cmty_LGA")
+data <- st_read(gdb_path, layer = "GDB_ColumnRegistry")
+
+```
+
+```{r}
+state_codes <- data.frame(readxl::read_xlsx("/Users/dkim/Desktop/govHack/data/LGA_2021_AUST.xlsx"))
+state_codes <- state_codes[!(duplicated(state_codes$LGA_NAME_2021)),]
+
+unique_lga_codes <- unique(state_codes$LGA_CODE_2021)
+```
+
+Load in data (LGA-Local Government Area - 2021)
+```{r, error=FALSE, warning=FALSE, message=FALSE}
+# Education and employment
+data_education_employment <- data.frame(readxl::read_xlsx("~/Desktop/govHack/data/A2_ABS_Education_and_employment_by_2021_LGA_Nov_2023_-1510573956151212977.xlsx"))
+data_socio_econ <- data.frame(readxl::read_xlsx("/Users/dkim/Desktop/govHack/data/B2_ABS_Socio_Economic_Indexes_for_Areas_SEIFA_by_2021_LGA1_-9194097286353431523.xlsx"))
+data_born_overseas <- data.frame(readxl::read_xlsx("/Users/dkim/Desktop/govHack/data/C2_ABS_Persons_born_overseas_by_2021_LGA_Nov_2023_-7913574970029666778.xlsx"))
+data_atsip <- data.frame(readxl::read_xlsx("/Users/dkim/Desktop/govHack/data/D1_ABS_ATSIP_LGA_November_2023_3182165115781572549.xlsx"))
+data_family_com <- data.frame(readxl::read_xlsx("/Users/dkim/Desktop/govHack/data/E1_ABS_Family_and_community_by_2021_LGA_Nov_2023_296646023296514375.xlsx"))
+
+lga_codes <- unique(c(data_education_employment$Local.Government.Areas.2021.code,
+               data_socio_econ$Local.Government.Areas.2021.code,
+               data_born_overseas$Local.Government.Areas.2021.code,
+               data_atsip$Local.Government.Areas.2021.code,
+               data_family_com$Local.Government.Areas.2021.code))
+common_lga_codes <- intersect(unique_lga_codes, lga_codes)
+
+data_list <- list(data_education_employment, 
+                  data_socio_econ,
+                  data_born_overseas,
+                  data_atsip,
+                  data_family_com)
+
+state_codes <- state_codes[state_codes$LGA_CODE_2021 %in% common_lga_codes,]
+state_codes <- state_codes[match(common_lga_codes, state_codes$LGA_CODE_2021),]
+```
+
+Subset and match
+```{r, error=FALSE, warning=FALSE, message=FALSE}
+data_list <- lapply(data_list, function(x){
+  x[x$Local.Government.Areas.2021.code %in% common_lga_codes,]
+  x[match(common_lga_codes, x$Local.Government.Areas.2021.code),]
+})
+```
+
+Remove variables > 25% missing values
+```{r, error=FALSE, warning=FALSE, message=FALSE}
+#data_list <- list(data_education_employment, 
+                  # data_socio_econ,
+                  # data_born_overseas,
+                  # data_atsip,
+                  # data_family_com)
+tmp_data <- data_list[[1]]
+gg_miss_var(tmp_data, show_pct=TRUE)
+
+for(i in 1:length(data_list)){
+    tmp_data <- data_list[[i]]
+    missing <- apply(tmp_data, 2 ,function(x){
+    sum(is.na(x))/length(x)
+  })
+    idx <- which(missing > 0.25)
+    if(length(idx) > 0){
+      tmp_data <- tmp_data[,-idx]
+    }
+    tmp_data <- tmp_data[,-idx]
+}
+```
+
+Mean imputation
+```{r, error=FALSE, warning=FALSE, message=FALSE}
+#data_list <- list(data_education_employment, 
+                  # data_socio_econ,
+                  # data_born_overseas,
+                  # data_atsip,
+                  # data_family_com)
+# data_education_employment
+for(i in 1:length(data_list)){
+  tmp_data <- data_list[[i]]
+  numeric_cols <- sapply(tmp_data, is.numeric)
+
+# Step 2: Impute missing values in numeric columns with the column mean
+  tmp_data[,numeric_cols] <- lapply(tmp_data[,numeric_cols], function(x) {
+  x[is.na(x)] <- mean(x, na.rm = TRUE)
+  return(x)
+})
+  data_list[[i]] <- tmp_data
+}
+tmp_data <- data_list[[1]]
+gg_miss_var(tmp_data, show_pct=TRUE)
+```
+
+Remove redundant variables
+```{r, error=FALSE, warning=FALSE, message=FALSE}
+remove <- c("OBJECTID", "Uniform.Resource.Identifier", "globalid", "Shape__Area", "Shape__Length")
+for(i in 1:length(data_list)){
+  tmp_data <- data_list[[i]]
+  if(i == 1){
+    tmp_data <- tmp_data[,!(colnames(tmp_data) %in% remove)]
+  }else{
+    tmp_data <- tmp_data[,!(colnames(tmp_data) %in% c("Local.Government.Areas.2021.code", "Local.Government.Areas.2021.name", "Area.in.square.kilometres", remove))]
+  }
+  data_list[[i]] <- tmp_data 
+}
+```
+
+Integrate data
+```{r, error=FALSE, warning=FALSE, message=FALSE}
+combined_data <- do.call(cbind, data_list)
+combined_data <- combined_data[match(state_codes$LGA_CODE_2021, combined_data$Local.Government.Areas.2021.code),]
+combined_data <- data.frame(combined_data[,1:3], state_codes$STATE_NAME_2021, combined_data[,5:ncol(combined_data)])
+saveRDS(combined_data, "~/Desktop/govHack/data/combined_data.rds")
+```
+
+```{r, error=FALSE, warning=FALSE, message=FALSE}
+for(i in 5:ncol(combined_data)){
+  png(paste0("~/Desktop/govHack/results/histograms/", colnames(combined_data)[i],".png"))
+  hist(combined_data[,i], main=colnames(combined_data)[i])
+  dev.off()
+}
+```

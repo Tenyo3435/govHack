@@ -1,0 +1,246 @@
+---
+title: "Preprocess & analysis"
+author: "Daniel Kim"
+output:
+  html_document:
+    fig_caption: yes
+    number_sections: no
+    self_contained: yes
+    theme: flatly
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    echo: TRUE
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load libraries
+```{r, error=FALSE, warning=FALSE, message=FALSE}
+library(ggplot2)
+library(umap)
+```
+
+Load data
+```{r, error=FALSE, warning=FALSE, message=FALSE}
+tmp_data <- readRDS("~/Desktop/govHack/data/combined_data.rds")
+```
+
+```{r}
+tmp <- tmp_data[tmp_data$Local.Government.Areas.2021.name %in% "Strathfield",]
+tmp1 <- sum((tmp_data[,c(42:46)]))
+tmp2 <- sum(tmp$Persons.who.did.not.go.to.school......Data.year..2021.)
+```
+
+Variables of interest
+```{r}
+prop_no_school <- -log((tmp_data$Persons.who.did.not.go.to.school......Data.year..2021.+.Machine$double.xmin)/100)
+#prop_postschool <- exp(-rowSums(log(data[,c(35:40,42:46)]/100)))
+prop_postschool <- rowSums(-log((tmp_data[,c(42:46)] +.Machine$double.xmin)/100))
+#tmp_data <- data[,c(42:46)]/100
+#prop_postschool <- apply(tmp_data, 1, prod)
+score <- prop_postschool/prop_no_school
+hist(score)
+tmp_data$spi <- score
+tmp_data <- tmp_data[,-c(35:63)]
+
+# boxplot(Highest.year.of.school.completed..Year.12.or.equivalent......Data.year..2021.~cluster, data=data)
+#boxplot(spi~cluster, data=data)
+#boxplot(data$spi~data$state_codes.STATE_NAME_2021)
+# boxplot(data[data$Local.Government.Areas.2021.name %in% cluster_4_lgas,]$spi)
+# boxplot(data[data$Local.Government.Areas.2021.name %in% cluster_1_lgas,]$spi)
+# # cluster_4_lgas
+#  c4x <- rowSums(-log((data[data$Local.Government.Areas.2021.name %in% cluster_4_lgas, c(42:46)]+.Machine$double.xmin)/100))
+#  c4y <- ((data$Persons.who.did.not.go.to.school......Data.year..2021.[data$Local.Government.Areas.2021.name %in% cluster_4_lgas]+.Machine$double.xmin)/100)
+#  score4 <- (c4x/c4y)
+# 
+#  c1x <- rowSums(-log((data[data$Local.Government.Areas.2021.name %in% cluster_1_lgas, c(42:46)]+.Machine$double.xmin)/100))
+#  c1y <- ((data$Persons.who.did.not.go.to.school......Data.year..2021.[data$Local.Government.Areas.2021.name %in% cluster_1_lgas]+.Machine$double.xmin)/100)
+#  score1 <- (c1x/c1y)
+# #
+#  boxplot(list(cluster4=score4, cluster1=score1))
+df <- data.frame(state=tmp_data$state_codes.STATE_NAME_2021,
+                 spi=tmp_data$spi)
+df$state <- as.factor(df$state)
+ggplot(df, aes(x=state, y=spi)) + geom_boxplot() + theme(axis.text = element_text(angle=45, hjust=1))
+```
+
+PCA
+```{r, error=FALSE, warning=FALSE, message=FALSE}
+numeric_data <- tmp_data[,5:ncol(tmp_data)]
+pca_result <- prcomp(numeric_data, center = TRUE, scale. = TRUE)
+var <- pca_result$sdev^2 / sum(pca_result$sdev^2)
+barplot(var[1:20], main = "Scree Plot")
+# Use first 5 PCs
+pca <- data.frame(pca_result$x)
+ggplot(pca, aes(x=PC1, y=PC2)) + geom_point()
+```
+
+UMAP
+```{r, error=FALSE, warning=FALSE, message=FALSE}
+set.seed(3435)
+umap_result <- umap(pca[,1:6])
+umap <- as.data.frame(umap_result$layout)
+umap$state <- as.factor(tmp_data$state_codes.STATE_NAME_2021)
+ggplot(umap, aes(x=V1, y=V2, color=state)) + geom_point()
+```
+K-means
+```{r}
+set.seed(3435)
+tss <- c()
+for(i in 2:40){
+  tmp_kmeans <- kmeans(umap_result$layout, centers = i)
+  tss <- c(tss, tmp_kmeans$tot.withinss)
+}
+plot(tss)
+
+# 5-6 clusters is has largest dip in TSS
+k <- 6
+set.seed(3435)
+kmeans_result <- kmeans(umap_result$layout, centers = k)
+cluster <- kmeans_result$cluster
+umap$cluster <- as.factor(cluster)
+ggplot(umap, aes(x=V1, y=V2, color=cluster)) + geom_point()
+
+tmp_data$cluster <- as.factor(cluster)
+tmp_data$PC1 <- pca$PC1
+tmp_data$PC2 <- pca$PC2
+ggplot(tmp_data, aes(x=PC1, y=PC2, color=cluster)) + geom_point()
+```
+
+remove varibles that capture non-responses
+```{r}
+variables <- colnames(tmp_data)
+idx <- grepl("not", variables, ignore.case=TRUE)
+print(colnames(tmp_data)[idx])
+idx <- which(idx == TRUE)
+tmp_data <- tmp_data[, -idx]
+tmp_data <- tmp_data[, !(colnames(tmp_data) %in% c("cluster", "PC1", "PC2"))]
+
+idx <- grepl("Inadequately", variables, ignore.case=TRUE)
+print(colnames(tmp_data)[idx])
+idx <- which(idx == TRUE)
+tmp_data <- tmp_data[, -idx] 
+
+# Remove Occupation
+# idx <- grepl("occupation", variables, ignore.case=TRUE)
+# idx <- which(idx == TRUE)
+# data <- data[, -idx] 
+
+# saveRDS(tmp_data, "~/Desktop/govHack/data/combined_data.rds")
+# data <- readRDS("~/Desktop/govHack/data/combined_data.rds")
+```
+
+########## Redo PCA, UMAP, and clustering after removing redundant variables ####################
+```{r}
+numeric_data <- tmp_data[,5:ncol(tmp_data)]
+pca_result <- prcomp(numeric_data, center = TRUE, scale. = TRUE)
+var <- pca_result$sdev^2 / sum(pca_result$sdev^2)
+barplot(var[1:20], main = "Scree Plot")
+# Use first 5 PCs
+pca <- data.frame(pca_result$x)
+ggplot(pca, aes(x=PC1, y=PC2)) + geom_point()
+```
+
+UMAP
+```{r, error=FALSE, warning=FALSE, message=FALSE}
+set.seed(3435)
+umap_result <- umap(pca[,1:6])
+umap <- as.data.frame(umap_result$layout)
+umap$state <- factor(tmp_data$state_codes.STATE_NAME_2021, levels = c("Australian Capital Territory",
+                                                                         "New South Wales",
+                                                                         "Northern Territory",
+                                                                         "Queensland",
+                                                                         "South Australia",
+                                                                         "Tasmania",
+                                                                         "Victoria",
+                                                                         "Western Australia",
+                                                                         "Other Territories",
+                                                                         "Outside Australia"))
+state_colours <- c("#003da5", 
+                   "#9bcbeb", 
+                   "#c25f04", 
+                   "#72182c", 
+                   "#d50132", 
+                   "#016747", 
+                   "#003c71", 
+                   "#ffd100",
+                   "#f7c7cc",
+                   "#a2abb7")
+ggplot(umap, aes(x=V1, y=V2, color=state)) + 
+  theme(panel.background = element_blank(),
+        axis.line = element_line(color="black"),
+        legend.text = element_text(size = 10)) + 
+  scale_color_manual(values=state_colours) +
+  labs(x="\nUMAP1", y="UMAP2\n", color = "State") + 
+  geom_point()
+ggsave("~/Desktop/govHack/results/UMAP_states.png", width=9, height=5)
+```
+
+K-means
+```{r}
+set.seed(3435)
+tss <- c()
+for(i in 2:40){
+  tmp_kmeans <- kmeans(umap_result$layout, centers = i)
+  tss <- c(tss, tmp_kmeans$tot.withinss)
+}
+plot(tss)
+
+# 5-6 clusters is has largest dip in TSS
+k <- 6
+set.seed(3435)
+kmeans_result <- kmeans(umap_result$layout, centers = k)
+cluster <- kmeans_result$cluster
+umap$cluster <- as.factor(cluster)
+ggplot(umap, aes(x=V1, y=V2, color=cluster)) + geom_point()
+
+tmp_data$cluster <- as.factor(cluster)
+tmp_data$PC1 <- pca$PC1
+tmp_data$PC2 <- pca$PC2
+ggplot(tmp_data, aes(x=PC1, y=PC2, color=cluster)) + geom_point()
+```
+collapse clusters
+```{r}
+cluster <- ifelse(cluster == "4", "1", cluster)
+cluster <- ifelse(cluster == "6", "1", cluster)
+cluster <- ifelse(cluster == "5", "4", cluster)
+tmp_data$cluster <- as.factor(cluster)
+```
+
+
+assign clusters
+```{r}
+tmp_data$cluster <- as.factor(cluster)
+tmp_data$PC1 <- pca$PC1
+tmp_data$PC2 <- pca$PC2
+tmp_data$UMAP1 <- umap$V1
+tmp_data$UMAP2 <- umap$V2
+
+ggplot(tmp_data, aes(x=UMAP1, y=UMAP2, color=cluster)) + 
+  theme(panel.background = element_blank(),
+        axis.line = element_line(color="black"),
+        legend.text = element_text(size = 10)) + 
+  labs(x="\nUMAP1", y="UMAP2\n", color = "Cluster") + 
+  geom_point()
+ggsave("~/Desktop/govHack/results/UMAP_cluster.png", width=9, height=5)
+```
+
+what's driving PC1?
+```{r}
+tmp <- pca_result$rotation
+head(sort(tmp[,1], decreasing=TRUE))
+tmp_data$spi <- 1/tmp_data$spi
+saveRDS(tmp_data,"~/Desktop/govHack/data/final_data.rds")
+tmp_data$Local.Government.Areas.2021.name[tmp_data$cluster=="4"]
+boxplot(spi~cluster, tmp_data)
+
+```
+
+
+
+
+
